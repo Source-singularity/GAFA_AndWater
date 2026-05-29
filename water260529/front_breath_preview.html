@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Front Breath Preview</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #000;
+      --panel: #080808;
+      --grid-line: #1c1c1c;
+      --cell-dark: #1b1b1b;
+      --text: #e8eef2;
+      --muted: #8f9ba3;
+      --accent: #bfeaff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+    }
+
+    main {
+      width: min(1420px, 100%);
+    }
+
+    .status {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .status strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .status span {
+      white-space: nowrap;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(11, minmax(48px, 1fr));
+      grid-template-rows: repeat(6, 1fr);
+      gap: clamp(8px, 1.1vw, 16px);
+      width: 100%;
+      aspect-ratio: 11 / 6;
+      padding: clamp(10px, 1.4vw, 18px);
+      background:
+        linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.035), transparent),
+        var(--panel);
+      border: 1px solid var(--grid-line);
+    }
+
+    .cell {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      min-height: 0;
+      aspect-ratio: 1;
+      background: var(--cell-dark);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+      overflow: visible;
+    }
+
+    .cell::after {
+      content: "";
+      position: absolute;
+      inset: -12%;
+      opacity: var(--glow, 0);
+      background: radial-gradient(circle, rgba(144, 224, 255, 0.48), transparent 68%);
+      filter: blur(12px);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .inner {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      transform: scale(var(--scale, 1));
+      transform-origin: center;
+      background: var(--fill, #1b1b1b);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow:
+        0 0 var(--shadow-size, 0) rgba(116, 221, 255, var(--shadow-alpha, 0)),
+        inset 0 0 18px rgba(255, 255, 255, var(--inner-alpha, 0));
+      z-index: 1;
+      will-change: transform, background, box-shadow;
+    }
+
+    .number {
+      position: relative;
+      z-index: 2;
+      color: rgba(255, 255, 255, 0.94);
+      font-size: clamp(18px, 2.4vw, 38px);
+      font-weight: 700;
+      line-height: 1;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.75);
+    }
+
+    .empty .inner {
+      transform: scale(1);
+    }
+
+    .pin {
+      position: absolute;
+      right: 6px;
+      bottom: 5px;
+      z-index: 3;
+      color: rgba(225, 244, 252, 0.48);
+      font-size: clamp(8px, 0.8vw, 11px);
+      letter-spacing: 0;
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding: 14px;
+      }
+
+      .grid {
+        gap: 6px;
+        grid-template-columns: repeat(11, minmax(22px, 1fr));
+      }
+
+      .pin {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="status" aria-label="animation status">
+      <span><strong>Front Breath Preview</strong></span>
+      <span>cycle <strong id="cycleTime">0.00s</strong> / 5.20s</span>
+      <span>LED brightness <strong>2-20</strong></span>
+      <span>servo scale <strong>0.7-1.0</strong></span>
+      <span>C1-C11 = <strong>PE0-PE10</strong></span>
+    </section>
+    <section class="grid" id="grid" aria-label="front 6 by 11 breathing grid"></section>
+  </main>
+
+  <script>
+    const FRONT_GRID = [
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, null],
+      [11, 12, 13, 14, null, null, null, null, 15, 16, null],
+      [17, 18, 19, 20, null, null, null, null, 21, 22, null],
+      [null, null, null, null, null, 23, 24, null, null, 25, null],
+      [null, null, null, null, null, 26, 27, null, null, null, null],
+      [28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+    ];
+
+    const BREATH_PERIOD_MS = 5200;
+    const X_PHASE = 0.32;
+    const Y_PHASE = 0.46;
+    const LED_MIN = 2;
+    const LED_MAX = 20;
+    const SCALE_MIN = 0.7;
+    const SCALE_MAX = 1.0;
+    const TWO_PI = Math.PI * 2;
+
+    const gridEl = document.getElementById("grid");
+    const cycleTimeEl = document.getElementById("cycleTime");
+    const cells = [];
+
+    function wave01(phase) {
+      return 0.5 - 0.5 * Math.cos(phase);
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function gamma(value) {
+      const clamped = clamp(value, 0, 1);
+      return clamped * clamped;
+    }
+
+    function brightnessForBreath(value) {
+      return LED_MIN + gamma(value) * (LED_MAX - LED_MIN);
+    }
+
+    function servoScaleForBreath(value) {
+      return SCALE_MIN + gamma(value) * (SCALE_MAX - SCALE_MIN);
+    }
+
+    function fillColorForBrightness(brightness) {
+      const intensity = clamp(brightness / LED_MAX, 0, 1);
+      const base = 27;
+      const r = Math.round(base + intensity * 42);
+      const g = Math.round(base + intensity * 122);
+      const b = Math.round(base + intensity * 160);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function makeCell(box, row, col) {
+      const cell = document.createElement("div");
+      cell.className = box === null ? "cell empty" : "cell servo";
+      cell.dataset.row = String(row);
+      cell.dataset.col = String(col);
+      if (box !== null) {
+        cell.dataset.box = String(box);
+      }
+
+      const inner = document.createElement("div");
+      inner.className = "inner";
+      cell.appendChild(inner);
+
+      if (box !== null) {
+        const number = document.createElement("div");
+        number.className = "number";
+        number.textContent = box;
+        inner.appendChild(number);
+      }
+
+      const pin = document.createElement("div");
+      pin.className = "pin";
+      pin.textContent = `PE${col}`;
+      cell.appendChild(pin);
+
+      gridEl.appendChild(cell);
+      cells.push({ cell, inner, box, row, col });
+    }
+
+    FRONT_GRID.forEach((rowValues, row) => {
+      rowValues.forEach((box, col) => makeCell(box, row, col));
+    });
+
+    function render(now) {
+      const cycleMs = now % BREATH_PERIOD_MS;
+      const basePhase = (cycleMs / BREATH_PERIOD_MS) * TWO_PI;
+      cycleTimeEl.textContent = `${(cycleMs / 1000).toFixed(2)}s`;
+
+      for (const item of cells) {
+        const ledPhase = basePhase + item.col * X_PHASE;
+        const ledBreath = wave01(ledPhase);
+        const brightness = brightnessForBreath(ledBreath);
+        const visual = clamp(brightness / LED_MAX, 0, 1);
+
+        item.inner.style.setProperty("--fill", fillColorForBrightness(brightness));
+        item.inner.style.setProperty("--shadow-size", `${Math.round(4 + visual * 32)}px`);
+        item.inner.style.setProperty("--shadow-alpha", (0.06 + visual * 0.62).toFixed(3));
+        item.inner.style.setProperty("--inner-alpha", (0.02 + visual * 0.12).toFixed(3));
+        item.cell.style.setProperty("--glow", (visual * 0.85).toFixed(3));
+
+        if (item.box !== null) {
+          const servoPhase = basePhase + item.col * X_PHASE + item.row * Y_PHASE;
+          const servoBreath = wave01(servoPhase);
+          item.inner.style.setProperty("--scale", servoScaleForBreath(servoBreath).toFixed(4));
+        } else {
+          item.inner.style.setProperty("--scale", "1");
+        }
+      }
+
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>
