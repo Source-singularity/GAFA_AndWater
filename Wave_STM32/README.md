@@ -75,8 +75,8 @@
 *   **雷达 1 (负责正面交互面)**：
     *   **VCC** $\rightarrow$ 接主板的 **`5V`**
     *   **GND** $\rightarrow$ 接主板的 **`GND`**
-    *   **TX** $\rightarrow$ 接主板右侧排针的 **`PA10` (A10)** （数据输入）
-    *   **RX** $\rightarrow$ 接主板右侧排针的 **`PA9` (A9)**  （数据输出）
+    *   **TX** $\rightarrow$ 接主板右侧排针的 **`PB11` (B11)** （数据输入）
+    *   **RX** $\rightarrow$ 接主板右侧排针的 **`PB10` (B10)**  （数据输出）
 *   **雷达 2 (负责侧面交互面)**：
     *   **VCC** $\rightarrow$ 接主板的 **`5V`**
     *   **GND** $\rightarrow$ 接主板 the **`GND`**
