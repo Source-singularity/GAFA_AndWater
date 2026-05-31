@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Front Breath Preview</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #000;
+      --panel: #080808;
+      --grid-line: #1c1c1c;
+      --cell-dark: #1b1b1b;
+      --text: #e8eef2;
+      --muted: #8f9ba3;
+      --accent: #bfeaff;
+      --glow-rgb: 116, 221, 255;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: min(100%, calc((100vh - 190px) * var(--cols) / var(--rows)));
+      max-height: calc(100vh - 190px);
+      margin: 0 auto;
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+    }
+
+    main {
+      width: min(1420px, 100%);
+    }
+
+    .page-button {
+      position: fixed;
+      top: 50%;
+      z-index: 20;
+      width: clamp(52px, 5.4vw, 66px);
+      height: clamp(52px, 5.4vw, 66px);
+      padding: 0;
+      background: rgba(255, 255, 255, 0.015);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 50%;
+      cursor: pointer;
+      transform: translateY(-50%);
+      backdrop-filter: blur(4px);
+      transition: opacity 180ms ease, visibility 180ms ease, background 160ms ease, border-color 160ms ease;
+    }
+
+    .page-button.left {
+      left: 18px;
+    }
+
+    .page-button.right {
+      right: 18px;
+    }
+
+    .page-button::before,
+    .page-button::after {
+      content: "";
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .page-button::before {
+      left: 56%;
+      top: 50%;
+      width: 15px;
+      height: 15px;
+      border-left: 2px solid rgba(232, 238, 242, 0.86);
+      border-bottom: 2px solid rgba(232, 238, 242, 0.86);
+      transform: translate(-50%, -50%) rotate(45deg);
+    }
+
+    .page-button.right::before {
+      left: 44%;
+      transform: translate(-50%, -50%) rotate(225deg);
+    }
+
+    .page-button::after {
+      display: none;
+    }
+
+    .page-button.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .page-button:hover {
+      border-color: rgba(255, 255, 255, 0.45);
+      background: rgba(255, 255, 255, 0.055);
+    }
+
+    .page-button:focus-visible {
+      outline: 2px solid rgba(191, 234, 255, 0.8);
+      outline-offset: 3px;
+    }
+
+    .status {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .status strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .status span {
+      white-space: nowrap;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .mode-tabs {
+      display: inline-grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      padding: 3px;
+      background: #111;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .mode-button {
+      min-width: 72px;
+      min-height: 34px;
+      padding: 0 14px;
+      color: var(--muted);
+      font: inherit;
+      font-size: 14px;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+    }
+
+    .mode-button.active {
+      color: #050505;
+      background: var(--text);
+      font-weight: 700;
+    }
+
+    .speed-control {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .speed-control input {
+      width: min(260px, 42vw);
+      accent-color: var(--accent);
+    }
+
+    .speed-control strong {
+      min-width: 42px;
+      color: var(--text);
+      font-weight: 600;
+      text-align: right;
+    }
+
+    .stage {
+      display: grid;
+      overflow: hidden;
+      width: 100%;
+      aspect-ratio: 11 / 6;
+    }
+
+    .preview-page {
+      grid-area: 1 / 1;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(110%);
+      transition: transform 420ms ease, opacity 420ms ease;
+    }
+
+    .preview-page.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    .preview-page.exit-left {
+      transform: translateX(-110%);
+    }
+
+    .preview-page.exit-right {
+      transform: translateX(110%);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(var(--cols), minmax(48px, 1fr));
+      grid-template-rows: repeat(var(--rows), 1fr);
+      gap: clamp(8px, 1.1vw, 16px);
+      height: 100%;
+      aspect-ratio: var(--cols) / var(--rows);
+      margin: 0 auto;
+      padding: clamp(10px, 1.4vw, 18px);
+      background:
+        linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.035), transparent),
+        var(--panel);
+      border: 1px solid var(--grid-line);
+    }
+
+    .front-grid {
+      width: 100%;
+    }
+
+    .side-grid {
+      width: calc((100% - 10 * clamp(8px, 1.1vw, 16px) - 2 * clamp(10px, 1.4vw, 18px)) / 11 * 4 + 3 * clamp(8px, 1.1vw, 16px) + 2 * clamp(10px, 1.4vw, 18px));
+    }
+
+    .cell {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      min-height: 0;
+      aspect-ratio: 1;
+      background: var(--cell-dark);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+      overflow: visible;
+    }
+
+    .cell.merged {
+      aspect-ratio: auto;
+    }
+
+    .cell::after {
+      content: "";
+      position: absolute;
+      inset: -12%;
+      opacity: var(--glow, 0);
+      background: radial-gradient(circle, rgba(var(--glow-rgb), 0.48), transparent 68%);
+      filter: blur(12px);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .inner {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      transform: scale(var(--scale, 1));
+      transform-origin: center;
+      background: var(--fill, #1b1b1b);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow:
+        0 0 var(--shadow-size, 0) rgba(var(--glow-rgb), var(--shadow-alpha, 0)),
+        inset 0 0 18px rgba(255, 255, 255, var(--inner-alpha, 0));
+      z-index: 1;
+      will-change: transform, background, box-shadow;
+    }
+
+    .number {
+      position: relative;
+      z-index: 2;
+      color: rgba(255, 255, 255, 0.94);
+      font-size: clamp(18px, 2.4vw, 38px);
+      font-weight: 700;
+      line-height: 1;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.75);
+    }
+
+    .empty .inner {
+      transform: scale(1);
+    }
+
+    .pin {
+      position: absolute;
+      right: 6px;
+      bottom: 5px;
+      z-index: 3;
+      color: rgba(225, 244, 252, 0.48);
+      font-size: clamp(8px, 0.8vw, 11px);
+      letter-spacing: 0;
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding: 14px;
+      }
+
+      .grid {
+        gap: 6px;
+        grid-template-columns: repeat(var(--cols), minmax(22px, 1fr));
+      }
+
+      .pin {
+        display: none;
+      }
+
+      .mode-button {
+        min-width: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <button class="page-button left" id="sidePageButton" type="button" aria-label="切换到侧面预览"></button>
+  <button class="page-button right hidden" id="frontPageButton" type="button" aria-label="返回正面预览"></button>
+  <main>
+    <section class="status" aria-label="animation status">
+      <span><strong>Front Breath Preview</strong></span>
+      <span>mode <strong id="modeName">呼吸</strong></span>
+      <span>page <strong id="pageName">Front</strong></span>
+      <span>cycle <strong id="cycleTime">0.00s</strong> / <strong id="cycleTotal">5.20s</strong></span>
+      <span>LED brightness <strong>2-20</strong></span>
+      <span>LED units <strong>6 strips / 42 panels</strong></span>
+      <span>servo scale <strong>0.7-1.0</strong></span>
+      <span>servo color <strong>purple / yellow</strong>, empty <strong>blue</strong></span>
+    </section>
+    <section class="controls" aria-label="animation controls">
+      <div class="mode-tabs" role="tablist" aria-label="preview mode">
+        <button class="mode-button active" type="button" data-mode="breath" role="tab" aria-selected="true">呼吸</button>
+        <button class="mode-button" type="button" data-mode="ripple" role="tab" aria-selected="false">涟漪</button>
+        <button class="mode-button" type="button" data-mode="wander" role="tab" aria-selected="false">游走</button>
+      </div>
+      <label class="speed-control">
+        速度
+        <input id="speedControl" type="range" min="0.4" max="2.2" step="0.1" value="1.0">
+        <strong id="speedValue">1.0x</strong>
+      </label>
+    </section>
+    <section class="stage" aria-label="preview stage">
+      <section class="preview-page active" id="frontPage" data-page="front">
+        <section class="grid front-grid" id="frontGrid" aria-label="front 6 by 11 breathing grid"></section>
+      </section>
+      <section class="preview-page exit-right" id="sidePage" data-page="side">
+        <section class="grid side-grid" id="sideGrid" aria-label="side 6 by 4 breathing grid"></section>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const FRONT_GRID = [
+      [1, 2, 3, 4, 5, 6, 7, 8, "a", 9, 10],
+      [11, 12, 13, 14, "C", "C", "B", "B", "b", 15, 16],
+      [17, 18, 19, 20, "C", "C", "B", "B", "c", 21, 22],
+      ["F", "F", "E", "E", "D", "D", 23, 24, "A", "A", "d"],
+      ["F", "F", "E", "E", "D", "D", 26, 27, "A", "A", 25],
+      [28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38]
+    ];
+
+    const SIDE_GRID = [
+      [1, 2, 3, "e"],
+      ["G", "G", "f", "g"],
+      ["G", "G", 4, 5],
+      ["h", "i", 6, 7],
+      ["j", 8, 9, 10],
+      [11, 12, 13, 14]
+    ];
+
+    const BREATH_PERIOD_MS = 5200;
+    const X_PHASE = 0.32;
+    const Y_PHASE = 0.46;
+    const SIDE_PHASE_OFFSET = 1.15;
+    const LED_MIN = 2;
+    const LED_MAX = 20;
+    const SCALE_MIN = 0.7;
+    const SCALE_MAX = 1.0;
+    const RIPPLE_PERIOD_MS = 4200;
+    const WANDER_STEP_MS = 160;
+    const WANDER_BLUE_BREATH_PERIOD_MS = 6800;
+    const WANDER_TRAIL_LENGTH = 4;
+    const WANDER_DOT_COUNT = 5;
+    const TWO_PI = Math.PI * 2;
+    const COLORS = {
+      blue: [70, 150, 216],
+      yellow: [241, 232, 142],
+      purple: [162, 93, 219]
+    };
+
+    const PAGE_CONFIGS = {
+      front: {
+        key: "front",
+        label: "Front",
+        grid: FRONT_GRID,
+        rows: 6,
+        cols: 11,
+        phaseOffset: 0,
+        purpleBoxes: new Set([6, 7, 9, 13, 15, 19, 23, 26, 28, 29, 31, 33, 36, 37]),
+        mergedBlocks: [
+          { row: 3, col: 0, rowSpan: 2, colSpan: 2 },
+          { row: 3, col: 2, rowSpan: 2, colSpan: 2 },
+          { row: 3, col: 4, rowSpan: 2, colSpan: 2 },
+          { row: 1, col: 4, rowSpan: 2, colSpan: 2 },
+          { row: 1, col: 6, rowSpan: 2, colSpan: 2 },
+          { row: 3, col: 8, rowSpan: 2, colSpan: 2 }
+        ],
+        gridEl: document.getElementById("frontGrid"),
+        pageEl: document.getElementById("frontPage")
+      },
+      side: {
+        key: "side",
+        label: "Side",
+        grid: SIDE_GRID,
+        rows: 6,
+        cols: 4,
+        phaseOffset: SIDE_PHASE_OFFSET,
+        purpleBoxes: new Set([4, 5, 8, 9]),
+        mergedBlocks: [
+          { row: 1, col: 0, rowSpan: 2, colSpan: 2 }
+        ],
+        gridEl: document.getElementById("sideGrid"),
+        pageEl: document.getElementById("sidePage")
+      }
+    };
+
+    const modeNameEl = document.getElementById("modeName");
+    const pageNameEl = document.getElementById("pageName");
+    const cycleTimeEl = document.getElementById("cycleTime");
+    const cycleTotalEl = document.getElementById("cycleTotal");
+    const speedControlEl = document.getElementById("speedControl");
+    const speedValueEl = document.getElementById("speedValue");
+    const sidePageButtonEl = document.getElementById("sidePageButton");
+    const frontPageButtonEl = document.getElementById("frontPageButton");
+    const modeButtons = Array.from(document.querySelectorAll(".mode-button"));
+    const cells = [];
+    const modeLabel = {
+      breath: "呼吸",
+      ripple: "涟漪",
+      wander: "游走"
+    };
+    const state = {
+      mode: "breath",
+      page: "front",
+      speed: 1,
+      ripple: {
+        front: { cycle: -1, center: { row: 2.5, col: 5 } },
+        side: { cycle: -1, center: { row: 2.5, col: 1.5 } }
+      },
+      wander: {
+        front: { lastStep: -1, walkers: [] },
+        side: { lastStep: -1, walkers: [] }
+      }
+    };
+
+    function wave01(phase) {
+      return 0.5 - 0.5 * Math.cos(phase);
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function gamma(value) {
+      const clamped = clamp(value, 0, 1);
+      return clamped * clamped;
+    }
+
+    function brightnessForBreath(value) {
+      return LED_MIN + gamma(value) * (LED_MAX - LED_MIN);
+    }
+
+    function servoScaleForBreath(value) {
+      return SCALE_MIN + gamma(value) * (SCALE_MAX - SCALE_MIN);
+    }
+
+    function positionsForCell(row, col, rowSpan = 1, colSpan = 1) {
+      const positions = [];
+      for (let y = row; y < row + rowSpan; y++) {
+        for (let x = col; x < col + colSpan; x++) {
+          positions.push({ row: y, col: x });
+        }
+      }
+      return positions;
+    }
+
+    function mergedBlockAt(config, row, col) {
+      return config.mergedBlocks.find((block) => block.row === row && block.col === col);
+    }
+
+    function isCoveredByMergedBlock(config, row, col) {
+      return config.mergedBlocks.some((block) =>
+        row >= block.row &&
+        row < block.row + block.rowSpan &&
+        col >= block.col &&
+        col < block.col + block.colSpan &&
+        (row !== block.row || col !== block.col)
+      );
+    }
+
+    function randomRippleCenter(config) {
+      return {
+        row: Math.floor(Math.random() * config.rows),
+        col: Math.floor(Math.random() * config.cols)
+      };
+    }
+
+    function maxDistanceFromCenter(config, center) {
+      let maxDistance = 0;
+      for (let row = 0; row < config.rows; row++) {
+        for (let col = 0; col < config.cols; col++) {
+          maxDistance = Math.max(maxDistance, Math.hypot(col - center.col, row - center.row));
+        }
+      }
+      return maxDistance;
+    }
+
+    function isServoBox(box) {
+      return typeof box === "number";
+    }
+
+    function breathPattern(item, now) {
+      const periodMs = BREATH_PERIOD_MS / state.speed;
+      const cycleMs = now % periodMs;
+      const basePhase = (cycleMs / periodMs) * TWO_PI + item.config.phaseOffset;
+      const centerCol = item.col + (item.colSpan - 1) * 0.5;
+      const centerRow = item.row + (item.rowSpan - 1) * 0.5;
+      const ledValue = wave01(basePhase + centerCol * X_PHASE);
+      const servoValue = !isServoBox(item.box)
+        ? 0
+        : wave01(basePhase + centerCol * X_PHASE + centerRow * Y_PHASE);
+      return { ledValue, servoValue, cycleMs, cycleTotalMs: periodMs };
+    }
+
+    function ripplePattern(item, now) {
+      const periodMs = RIPPLE_PERIOD_MS / state.speed;
+      const pageRipple = state.ripple[item.page];
+      const cycleIndex = Math.floor(now / periodMs);
+      if (cycleIndex !== pageRipple.cycle) {
+        pageRipple.cycle = cycleIndex;
+        pageRipple.center = randomRippleCenter(item.config);
+      }
+
+      const cycleMs = now % periodMs;
+      const progress = cycleMs / periodMs;
+      const maxDistance = maxDistanceFromCenter(item.config, pageRipple.center) + 1.2;
+      const radius = progress * maxDistance;
+      const centerCol = item.col + (item.colSpan - 1) * 0.5;
+      const centerRow = item.row + (item.rowSpan - 1) * 0.5;
+      const distance = Math.hypot(centerCol - pageRipple.center.col, centerRow - pageRipple.center.row);
+      const ringWidth = 0.95;
+      const value = clamp(1 - Math.abs(distance - radius) / ringWidth, 0, 1);
+      return { ledValue: value, servoValue: value, cycleMs, cycleTotalMs: periodMs };
+    }
+
+    function wanderPattern(item, now) {
+      if (item.color === "blue") {
+        return wanderBlueBreathPattern(item, now);
+      }
+
+      const stepMs = WANDER_STEP_MS / state.speed;
+      const cycleMs = now % stepMs;
+      const cycleTotalMs = stepMs;
+      const currentStep = Math.floor(now / stepMs);
+      advanceWalkers(item.config, currentStep);
+      let value = 0;
+      for (const walker of state.wander[item.page].walkers) {
+        for (const position of item.positions) {
+          const age = currentStep - walker.visitedStep[position.row][position.col];
+          if (age >= 0 && age <= WANDER_TRAIL_LENGTH) {
+            value = Math.max(value, (WANDER_TRAIL_LENGTH + 1 - age) / (WANDER_TRAIL_LENGTH + 1));
+          }
+        }
+      }
+      return { ledValue: value, servoValue: value, cycleMs, cycleTotalMs };
+    }
+
+    function wanderBlueBreathPattern(item, now) {
+      const periodMs = WANDER_BLUE_BREATH_PERIOD_MS / state.speed;
+      const cycleMs = now % periodMs;
+      const centerCol = item.col + (item.colSpan - 1) * 0.5;
+      const phase = (cycleMs / periodMs) * TWO_PI - centerCol * 0.42 + item.config.phaseOffset;
+      const value = wave01(phase);
+      return { ledValue: value, servoValue: 0, cycleMs, cycleTotalMs: periodMs };
+    }
+
+    function makeVisitedGrid(config) {
+      return Array.from({ length: config.rows }, () => Array(config.cols).fill(-9999));
+    }
+
+    function randomGridPosition(config) {
+      return {
+        row: Math.floor(Math.random() * config.rows),
+        col: Math.floor(Math.random() * config.cols)
+      };
+    }
+
+    function makeWalker(config) {
+      const position = randomGridPosition(config);
+      const visitedStep = makeVisitedGrid(config);
+      visitedStep[position.row][position.col] = 0;
+      return {
+        row: position.row,
+        col: position.col,
+        previousRow: position.row,
+        previousCol: position.col,
+        visitedStep
+      };
+    }
+
+    function initWalkers(config) {
+      state.wander[config.key].walkers = Array.from({ length: WANDER_DOT_COUNT }, () => makeWalker(config));
+      state.wander[config.key].lastStep = -1;
+    }
+
+    function neighborsFor(config, row, col) {
+      const candidates = [
+        { row: row - 1, col },
+        { row: row + 1, col },
+        { row, col: col - 1 },
+        { row, col: col + 1 }
+      ];
+      return candidates.filter((position) =>
+        position.row >= 0 &&
+        position.row < config.rows &&
+        position.col >= 0 &&
+        position.col < config.cols
+      );
+    }
+
+    function advanceWalker(config, walker, step) {
+      let options = neighborsFor(config, walker.row, walker.col);
+      if (options.length > 1) {
+        options = options.filter((position) =>
+          position.row !== walker.previousRow || position.col !== walker.previousCol
+        );
+      }
+      const next = options[Math.floor(Math.random() * options.length)];
+      walker.previousRow = walker.row;
+      walker.previousCol = walker.col;
+      walker.row = next.row;
+      walker.col = next.col;
+      walker.visitedStep[walker.row][walker.col] = step;
+    }
+
+    function advanceWalkers(config, currentStep) {
+      const pageWander = state.wander[config.key];
+      if (pageWander.walkers.length === 0) {
+        initWalkers(config);
+      }
+      if (pageWander.lastStep < 0) {
+        for (const walker of pageWander.walkers) {
+          walker.visitedStep[walker.row][walker.col] = currentStep;
+        }
+        pageWander.lastStep = currentStep;
+        return;
+      }
+      const maxCatchUpSteps = 24;
+      if (currentStep - pageWander.lastStep > maxCatchUpSteps) {
+        initWalkers(config);
+        for (const walker of pageWander.walkers) {
+          walker.visitedStep[walker.row][walker.col] = currentStep;
+        }
+        pageWander.lastStep = currentStep;
+        return;
+      }
+      const targetStep = Math.min(currentStep, pageWander.lastStep + maxCatchUpSteps);
+      for (let step = pageWander.lastStep + 1; step <= targetStep; step++) {
+        for (const walker of pageWander.walkers) {
+          advanceWalker(config, walker, step);
+        }
+      }
+      pageWander.lastStep = targetStep;
+    }
+
+    function patternForCell(item, now) {
+      if (state.mode === "ripple") {
+        return ripplePattern(item, now);
+      }
+      if (state.mode === "wander") {
+        return wanderPattern(item, now);
+      }
+      return breathPattern(item, now);
+    }
+
+    function colorForBox(config, box) {
+      if (!isServoBox(box)) {
+        return "blue";
+      }
+      return config.purpleBoxes.has(box) ? "purple" : "yellow";
+    }
+
+    function fillColorForBrightness(brightness, colorName) {
+      const intensity = clamp(brightness / LED_MAX, 0, 1);
+      const base = 27;
+      const color = COLORS[colorName];
+      const r = Math.round(base + intensity * (color[0] - base));
+      const g = Math.round(base + intensity * (color[1] - base));
+      const b = Math.round(base + intensity * (color[2] - base));
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    function makeCell(config, box, row, col, rowSpan = 1, colSpan = 1) {
+      const cell = document.createElement("div");
+      const hasServo = isServoBox(box);
+      const hasLabel = box !== null && box !== undefined;
+      cell.className = hasServo ? "cell servo" : "cell empty";
+      const ledKind = rowSpan > 1 || colSpan > 1 ? "strip" : "panel";
+      cell.classList.add(ledKind);
+      if (rowSpan > 1 || colSpan > 1) {
+        cell.classList.add("merged");
+        cell.style.gridRow = `${row + 1} / span ${rowSpan}`;
+        cell.style.gridColumn = `${col + 1} / span ${colSpan}`;
+      }
+      cell.dataset.page = config.key;
+      cell.dataset.row = String(row);
+      cell.dataset.col = String(col);
+      cell.dataset.rowSpan = String(rowSpan);
+      cell.dataset.colSpan = String(colSpan);
+      cell.dataset.ledKind = ledKind;
+      const color = colorForBox(config, box);
+      cell.dataset.color = color;
+      if (hasServo) {
+        cell.dataset.box = String(box);
+      }
+
+      const inner = document.createElement("div");
+      inner.className = "inner";
+      cell.appendChild(inner);
+
+      if (hasLabel) {
+        const number = document.createElement("div");
+        number.className = "number";
+        number.textContent = box;
+        inner.appendChild(number);
+      }
+
+      const pin = document.createElement("div");
+      pin.className = "pin";
+      pin.textContent = ledKind === "strip" ? "STRIP" : "PANEL";
+      cell.appendChild(pin);
+
+      config.gridEl.appendChild(cell);
+      cells.push({
+        cell,
+        inner,
+        box,
+        page: config.key,
+        config,
+        row,
+        col,
+        rowSpan,
+        colSpan,
+        ledKind,
+        positions: positionsForCell(row, col, rowSpan, colSpan),
+        color
+      });
+    }
+
+    function buildPage(config) {
+      config.gridEl.style.setProperty("--rows", config.rows);
+      config.gridEl.style.setProperty("--cols", config.cols);
+      config.grid.forEach((rowValues, row) => {
+        rowValues.forEach((box, col) => {
+          if (isCoveredByMergedBlock(config, row, col)) {
+            return;
+          }
+          const mergedBlock = mergedBlockAt(config, row, col);
+          if (mergedBlock) {
+            makeCell(config, box, row, col, mergedBlock.rowSpan, mergedBlock.colSpan);
+            return;
+          }
+          makeCell(config, box, row, col);
+        });
+      });
+    }
+
+    function setPage(nextPage) {
+      if (state.page === nextPage) {
+        return;
+      }
+      const leaving = PAGE_CONFIGS[state.page].pageEl;
+      const entering = PAGE_CONFIGS[nextPage].pageEl;
+      const goingSide = nextPage === "side";
+      leaving.classList.remove("active", "exit-left", "exit-right");
+      leaving.classList.add(goingSide ? "exit-left" : "exit-right");
+      entering.classList.remove("exit-left", "exit-right");
+      entering.classList.add("active");
+      state.page = nextPage;
+      updateControls();
+    }
+
+    function updateControls() {
+      modeNameEl.textContent = modeLabel[state.mode];
+      pageNameEl.textContent = PAGE_CONFIGS[state.page].label;
+      speedValueEl.textContent = `${state.speed.toFixed(1)}x`;
+      sidePageButtonEl.classList.toggle("hidden", state.page !== "front");
+      frontPageButtonEl.classList.toggle("hidden", state.page !== "side");
+      for (const button of modeButtons) {
+        const active = button.dataset.mode === state.mode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+      }
+    }
+
+    modeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        state.mode = button.dataset.mode;
+        if (state.mode === "wander") {
+          initWalkers(PAGE_CONFIGS.front);
+          initWalkers(PAGE_CONFIGS.side);
+        }
+        updateControls();
+      });
+    });
+
+    speedControlEl.addEventListener("input", () => {
+      state.speed = Number(speedControlEl.value);
+      updateControls();
+    });
+
+    sidePageButtonEl.addEventListener("click", () => setPage("side"));
+    frontPageButtonEl.addEventListener("click", () => setPage("front"));
+
+    buildPage(PAGE_CONFIGS.front);
+    buildPage(PAGE_CONFIGS.side);
+    initWalkers(PAGE_CONFIGS.front);
+    initWalkers(PAGE_CONFIGS.side);
+
+    function render(now) {
+      let cycleMs = 0;
+      let cycleTotalMs = BREATH_PERIOD_MS / state.speed;
+
+      for (const item of cells) {
+        const pattern = patternForCell(item, now);
+        if (item.page === state.page) {
+          cycleMs = pattern.cycleMs;
+          cycleTotalMs = pattern.cycleTotalMs;
+        }
+        const ledValue = clamp(pattern.ledValue, 0, 1);
+        const servoValue = clamp(pattern.servoValue, 0, 1);
+        const brightness = brightnessForBreath(ledValue);
+        const visual = clamp(brightness / LED_MAX, 0, 1);
+
+        item.inner.style.setProperty("--fill", fillColorForBrightness(brightness, item.color));
+        item.cell.style.setProperty("--glow-rgb", COLORS[item.color].join(", "));
+        item.inner.style.setProperty("--shadow-size", `${Math.round(4 + visual * 32)}px`);
+        item.inner.style.setProperty("--shadow-alpha", (0.06 + visual * 0.62).toFixed(3));
+        item.inner.style.setProperty("--inner-alpha", (0.02 + visual * 0.12).toFixed(3));
+        item.cell.style.setProperty("--glow", (visual * 0.85).toFixed(3));
+
+        if (isServoBox(item.box)) {
+          item.inner.style.setProperty("--scale", servoScaleForBreath(servoValue).toFixed(4));
+        } else {
+          item.inner.style.setProperty("--scale", "1");
+        }
+      }
+
+      cycleTimeEl.textContent = `${(cycleMs / 1000).toFixed(2)}s`;
+      cycleTotalEl.textContent = `${(cycleTotalMs / 1000).toFixed(2)}s`;
+      requestAnimationFrame(render);
+    }
+
+    updateControls();
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>
